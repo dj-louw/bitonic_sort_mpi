@@ -16,13 +16,13 @@ class BitonicSorter
 {
 private:
 	vector<int> mDataToSort;
-	const int ASCENDING = 1;
-	const int DESCENDING = 0;
+	const int ASCENDING;// = 1;
+	const int DESCENDING;// = 0; 
 
 
 public:
 
-	BitonicSorter(){};
+	BitonicSorter(): ASCENDING(1), DESCENDING(0) {};
 	~BitonicSorter(){};
 
 	void Init(vector<int> _dataToSort)

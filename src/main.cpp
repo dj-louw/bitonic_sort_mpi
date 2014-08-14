@@ -27,12 +27,14 @@ bool handleInput(int argc, char ** argv);
 bool is_power_of_2(int i);
 
 
-
+   #define send_data_tag 2001
+   #define return_data_tag 2002
 
 int main(int argc, char **argv)
 {
 
 	// MPI related stuff.
+    MPI_Status status;	
 	int ierr = MPI_Init(&argc, &argv);
 	int my_id, num_procs;
 	ierr = MPI_Comm_rank(MPI_COMM_WORLD, &my_id);
@@ -59,42 +61,67 @@ int main(int argc, char **argv)
 		if (!handleInput(argc, argv)) return 0;
 
 		// populate the main vector with whatever is in the input file, and display
+		// TODO make sure the data vector's length is a power of 2!
 		vector<int> dataVector;
 		ft.ReadIntLinesIntoVector(dataVector);
 		printArray(dataVector);
+		int amountOfDataPerProcess = dataVector.size() / num_procs;			
 
-    	int amountOfDataPerProcess = num_rows / num_procs;		
-		for(an_id = 1; an_id < num_procs; an_id++)
+    	// Distribute a portion of the work to all the slave threads.
+		for(int proc = 1; proc < num_procs; proc++)
 		{
-			start_item = an_id*amountOfDataPerProcess + 1;
-			end_item   = (an_id + 1)*amountOfDataPerProcess;
 
-			if((num_rows - end_item) < amountOfDataPerProcess)
-				end_item = num_rows - 1;
+			int begin_index = proc * amountOfDataPerProcess;
+			int end_index = ((1 + proc)*amountOfDataPerProcess) - 1;
 
-			//num_rows_to_send = end_item - start_item + 1;
+			vector<int>::const_iterator begin_iter = dataVector.begin() + begin_index;
+			vector<int>::const_iterator end_iter = dataVector.begin() + end_index;
+			vector<int> tempVec(begin_iter, end_iter);
 
-			// ierr = MPI_Send(
-			// 	&num_rows_to_send,
-			// 	1,
-			// 	MPI_INT,
-			// 	an_id,
-			// 	send_data_tag,
-			// 	MPI_COMM_WORLD);
-
+			// send the size of each slave thread's data buffer
 			ierr = MPI_Send(
-				&dataVector.front(),
-				amountOfDataPerProcess,
+				&amountOfDataPerProcess,
+				1,
 				MPI_INT,
-				an_id,
+				proc,
 				send_data_tag,
 				MPI_COMM_WORLD);
-		}    	
+
+			// send each thread a portion of the data
+			ierr = MPI_Send(
+				&tempVec.front(),
+				amountOfDataPerProcess,
+				MPI_INT,
+				proc,
+				send_data_tag,
+				MPI_COMM_WORLD);
+		} 
+		MPI_Barrier(MPI_COMM_WORLD);
+
+
+		// the master thread cannot just delegate and do nothing else
+		// it must sort a portion of the data too!
+		vector<int>::const_iterator begin_iter = dataVector.begin();
+		vector<int>::const_iterator end_iter = dataVector.begin() + amountOfDataPerProcess;
+		vector<int> masterWorkVector(begin_iter, end_iter);  
+
+		BitonicSorter masterWorkSorter;
+		masterWorkSorter.Init(dataVector);
+		masterWorkSorter.Do();
+		dataVector = masterWorkSorter.GetData();	
+
+
+
+		// recieve all the sorted arrays from the slave threads.
+		for(int proc = 1; proc < num_procs; proc++)
+		{
+
+		} 
 
 
     }
 /*******************************************************************************/
-    else
+    else	
 /*********************************SLAVE PROCESS*********************************/
     /*
     * This is the slave process.
@@ -102,6 +129,35 @@ int main(int argc, char **argv)
     * and return it.
     */
     {
+		MPI_Barrier(MPI_COMM_WORLD);
+
+		int amountOfDataPerProcess;
+		// receive the size of the data
+		ierr = MPI_Recv(
+			&amountOfDataPerProcess,
+			1,
+			MPI_INT,
+			root_process,
+			send_data_tag,
+			MPI_COMM_WORLD,
+			&status);
+
+		vector<int> slaveWorkVector;
+		slaveWorkVector.resize(amountOfDataPerProcess);
+
+		// receive the data.
+		ierr = MPI_Recv(
+			&slaveWorkVector.front(),
+			amountOfDataPerProcess,
+			MPI_INT,
+			root_process,
+			send_data_tag,
+			MPI_COMM_WORLD,
+			&status);
+
+
+
+
 
     }
 /*******************************************************************************/
@@ -114,15 +170,13 @@ int main(int argc, char **argv)
 
 
 
-	BitonicSorter sorter;
-	sorter.Init(dataVector);
-	sorter.Do();
+	// BitonicSorter sorter;
+	// sorter.Init(dataVector);
+	// sorter.Do();
+	// dataVector = sorter.GetData();
 
-	dataVector = sorter.GetData();
-
-	printArray(dataVector);
-	ft.WriteVectorToFile(dataVector);
-
+	// printArray(dataVector);
+	// ft.WriteVectorToFile(dataVector);
 
 
 
@@ -133,7 +187,8 @@ int main(int argc, char **argv)
 
 
 
-	
+
+	MPI_Finalize();
 	return 0;
 }
 
