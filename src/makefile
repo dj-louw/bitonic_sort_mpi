@@ -1,5 +1,5 @@
 #specify the compiler
-CXX=g++ -std=c++0x
+CXX=mpic++ -std=c++0x
 
 all: init	
 	$(CXX) main.cpp -o bin/main.out
