@@ -48,7 +48,7 @@ int main(int argc, char **argv)
 
 
     if (my_id == root_process)
- /*********************************MAIN PROCESS*********************************/
+ /********************************MASTER PROCESS********************************/
     /*
     * This is the main process.
    	* It's task is to divide the vector up in portions,
@@ -64,8 +64,16 @@ int main(int argc, char **argv)
 		// TODO make sure the data vector's length is a power of 2!
 		vector<int> dataVector;
 		ft.ReadIntLinesIntoVector(dataVector);
-		printArray(dataVector);
-		int amountOfDataPerProcess = dataVector.size() / num_procs;			
+		int sizeOfData = dataVector.size();
+
+		if (!is_power_of_2(sizeOfData))
+		{	
+			cout << "The input size must be a power of two! exiting...";
+			MPI_Finalize();
+			return 0;
+		}
+
+		int amountOfDataPerProcess = sizeOfData / num_procs;			
 
     	// Distribute a portion of the work to all the slave threads.
 		for(int proc = 1; proc < num_procs; proc++)
@@ -75,7 +83,7 @@ int main(int argc, char **argv)
 			int end_index = ((1 + proc)*amountOfDataPerProcess) - 1;
 
 			vector<int>::const_iterator begin_iter = dataVector.begin() + begin_index;
-			vector<int>::const_iterator end_iter = dataVector.begin() + end_index;
+			vector<int>::const_iterator end_iter = dataVector.begin() + end_index+1; // ?
 			vector<int> tempVec(begin_iter, end_iter);
 
 			// send the size of each slave thread's data buffer
@@ -90,13 +98,13 @@ int main(int argc, char **argv)
 			// send each thread a portion of the data
 			ierr = MPI_Send(
 				&tempVec.front(),
-				amountOfDataPerProcess,
+				tempVec.size(),
 				MPI_INT,
 				proc,
 				send_data_tag,
 				MPI_COMM_WORLD);
 		} 
-		MPI_Barrier(MPI_COMM_WORLD);
+
 
 
 		// the master thread cannot just delegate and do nothing else
@@ -106,17 +114,58 @@ int main(int argc, char **argv)
 		vector<int> masterWorkVector(begin_iter, end_iter);  
 
 		BitonicSorter masterWorkSorter;
-		masterWorkSorter.Init(dataVector);
-		masterWorkSorter.Do();
-		dataVector = masterWorkSorter.GetData();	
+		masterWorkSorter.Init(masterWorkVector);
+		if (my_id % 2)
+		{		
+			//cout << "MASTER_DOWN" << endl;	
+			masterWorkSorter.DoDown();			
+		}
+		else
+		{			
+			//cout << "MASTER_UP" << endl;
+			masterWorkSorter.DoUp();			
+		}
+
+		masterWorkVector = masterWorkSorter.GetData();	
 
 
+		vector<int> resultsVector;
+		resultsVector.reserve(sizeOfData);
 
+		//add the master thread's completed work to the end of the results vector.
+		resultsVector.insert(resultsVector.end(), masterWorkVector.begin(), masterWorkVector.end());
+
+		vector<int> recievedData;
+		recievedData.resize(amountOfDataPerProcess);
 		// recieve all the sorted arrays from the slave threads.
 		for(int proc = 1; proc < num_procs; proc++)
-		{
+		{			
+			// recieve the data off the buffer.
+			ierr = MPI_Recv(
+				&recievedData.front(),
+				amountOfDataPerProcess,
+				MPI_INT,
+				proc,
+				return_data_tag,
+				MPI_COMM_WORLD,
+				&status);	
+
+			resultsVector.insert(resultsVector.end(), recievedData.begin(), recievedData.end());
 
 		} 
+
+		BitonicSorter resultsMergeSorter;
+		resultsMergeSorter.Init(resultsVector);
+
+		resultsMergeSorter.DoUp();
+		resultsVector = resultsMergeSorter.GetData();	
+
+
+		//and finally, write the results vector to the file!
+		ft.WriteVectorToFile(resultsVector);
+
+		cout << "Done!" << endl;
+
 
 
     }
@@ -129,12 +178,12 @@ int main(int argc, char **argv)
     * and return it.
     */
     {
-		MPI_Barrier(MPI_COMM_WORLD);
+		//MPI_Barrier(MPI_COMM_WORLD);
 
-		int amountOfDataPerProcess;
+		int amountOfDataReceived;
 		// receive the size of the data
 		ierr = MPI_Recv(
-			&amountOfDataPerProcess,
+			&amountOfDataReceived,
 			1,
 			MPI_INT,
 			root_process,
@@ -142,13 +191,14 @@ int main(int argc, char **argv)
 			MPI_COMM_WORLD,
 			&status);
 
+
 		vector<int> slaveWorkVector;
-		slaveWorkVector.resize(amountOfDataPerProcess);
+		slaveWorkVector.resize(amountOfDataReceived);
 
 		// receive the data.
 		ierr = MPI_Recv(
 			&slaveWorkVector.front(),
-			amountOfDataPerProcess,
+			amountOfDataReceived,
 			MPI_INT,
 			root_process,
 			send_data_tag,
@@ -156,37 +206,34 @@ int main(int argc, char **argv)
 			&status);
 
 
+		BitonicSorter slaveWorkSorter;
+		slaveWorkSorter.Init(slaveWorkVector);
+		
+		if (my_id % 2)
+		{	
+			//cout << "SLAVE_DOWN" << endl;		
+			slaveWorkSorter.DoDown();			
+		}
+		else
+		{	
+			//cout << "SLAVE_UP" << endl;				
+			slaveWorkSorter.DoUp();			
+		}
 
+		slaveWorkVector = slaveWorkSorter.GetData();	
+		
 
+		// send the results back to the master.
+		ierr = MPI_Send(
+			&slaveWorkVector.front(),
+			slaveWorkVector.size(),
+			MPI_INT,
+			root_process,
+			return_data_tag,
+			MPI_COMM_WORLD);
 
     }
 /*******************************************************************************/
-
-
-
-	
-	
-
-
-
-
-	// BitonicSorter sorter;
-	// sorter.Init(dataVector);
-	// sorter.Do();
-	// dataVector = sorter.GetData();
-
-	// printArray(dataVector);
-	// ft.WriteVectorToFile(dataVector);
-
-
-
-
-
-
-
-
-
-
 
 	MPI_Finalize();
 	return 0;

@@ -3,7 +3,7 @@
 /*
 BitonicSorterMPI.hpp
 Implementation of Batcher's Bitonic sort for MPI
-Copyright Daniel Louw <daniel@dline.co.za>
+Copyright Daniel Louw <daniel@dline.co.za> 2014
 Original serial bitonic sort code obtained from: 
 	http://groups.csail.mit.edu/cag/streamit/results/bitonic/code/c/bitonic.c
 and modified to suit the purpuse.
@@ -35,9 +35,19 @@ public:
 		return mDataToSort;
 	}
 
-	void Do()
+	void DoUp()
 	{
 		bitonicSort(0, mDataToSort.size(), ASCENDING);
+	}
+	void DoDown()
+	{
+		bitonicSort(0, mDataToSort.size(), DESCENDING);
+	}
+
+	// only performs a bitonic merge on the data.
+	void DoMergeOnly()
+	{
+		bitonicMerge(0, mDataToSort.size(), ASCENDING);
 	}
 
 	/** A comparator is modelled by the procedure compare, where the
@@ -63,7 +73,7 @@ public:
 	void bitonicMerge(int lo, int cnt, int dir)
 	{
 		if (cnt>1)
-			{
+		{
 			int k=cnt/2;
 			int i;
 			for (i=lo; i<lo+k; i++)
@@ -87,6 +97,23 @@ public:
 			bitonicMerge(lo, cnt, dir);
 		}
 	}
+
+
+
+	// 	/** Procedure bitonicSort first produces a bitonic sequence by
+	// * recursively sorting its two halves in opposite directions, and then
+	// * calls bitonicMerge.
+	// **/
+	// void bitonicSort(int lo, int cnt, int dir)
+	// {
+	// 	if (cnt>1)
+	// 	{
+	// 		int k=cnt/2;
+	// 		bitonicSort(lo, k, ASCENDING);
+	// 		bitonicSort(lo+k, k, DESCENDING);
+	// 		//bitonicMerge(lo, cnt, dir);
+	// 	}
+	// }
 
 
 };
